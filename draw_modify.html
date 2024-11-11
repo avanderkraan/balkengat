@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+    <script src="https://code.jquery.com/jquery-3.3.1.js" integrity="sha256-2Kok7MbOyxpgUVvAk/HJ2jigOSYS2auK4Pfzbm7uH60=" crossorigin="anonymous"></script>
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="./static/css/ol.css" type="text/css">
+  <script src="./static/js/ol.js"></script>
+  <link rel="stylesheet" href="./static/css/balkengat.css" type="text/css">
+
+  <title>Draw and find</title>
+  </head>
+  <body>
+
+    <div id="map"></div>
+    <div id="menu">
+      <ul class="nav nav-pills">
+        <li class="nav-item">
+          <a class="nav-link dropdown-toggle" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false" id="1">File</a>
+          <div class="dropdown-menu">
+            <a class="dropdown-item disabled" href="#" id="id_1-1">Open</a>
+            <a class="dropdown-item" href="#" id="id_1-2">Save</a>
+          </div>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false" id="2">Edit</a>
+          <div class="dropdown-menu">
+            <a class="dropdown-item" href="#" id="id_2-1">New</a>
+            <a class="dropdown-item" href="#" id="id_2-2">Move</a>
+            <a class="dropdown-item" href="#" id="id_2-3">Remove item</a>
+            <div class="dropdown-divider"></div>
+            <a class="dropdown-item" href="#" id="id_2-4">Label</a>
+            <a class="dropdown-item" href="#" id="id_2-5">No action</a>
+            <div class="dropdown-divider"></div>
+            <a class="dropdown-item" href="#" id="id_2-6" title="Warning! This will clear all without saving">Clear all</a>
+          </div>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false" id="2">View</a>
+            <div class="dropdown-menu">
+              <a class="dropdown-item" href="#" id="id_3-1">Rotate with arrow keys</a>
+              <a class="dropdown-item" href="#" id="id_3-2">Toggle labels</a>
+            </div>
+          </li>
+		<!--
+        <li class="nav-item">
+          <a class="nav-link" href="#" id="3">Legenda</a>
+        </li>
+		-->
+      </ul>
+    </div>
+    <div id="a" description="div needed for download"></div>
+    <div id="info">hier info</div>
+    <!-- Popup -->
+    <div id="popup" title="Item name"></div>
+	
+    <script>
+
+      /* start global variables */
+      const tile_layer = new ol.layer.Tile({
+        source: new ol.source.OSM()
+      });
+     /**
+      * Currently drawn feature.
+      * @type {module:ol/Feature~Feature}
+      */
+     var sketch;
+     /**
+      * The help tooltip element.
+      * @type {Element}
+      */
+     var helpTooltipElement;
+
+
+     /**
+      * Overlay to show the help messages.
+      * @type {module:ol/Overlay}
+      */
+     var helpTooltip;
+
+
+     /**
+      * The measure tooltip element.
+      * @type {Element}
+      */
+     var measureTooltipElement;
+
+
+     /**
+      * Overlay to show the measurement.
+      * @type {module:ol/Overlay}
+      */
+     var measureTooltip;
+
+    /**
+     * The label.
+     * @type {Element}
+     */
+    var labelElement;
+
+    // show with or without labels
+    var withLabel = true;
+
+
+	 var lineStyle = new ol.style.Style({
+        stroke: new ol.style.Stroke({
+          color: '#ffcc33',
+          width: 10
+        }),
+      });
+
+
+      var source = new ol.source.Vector({
+        features: [], //[feature, feature2]
+      });
+
+      var data_layer = new ol.layer.Vector({
+        source: source,
+        //style: [lineStyle],
+        style: styleFunction,
+        myid: 'datalayer'
+      });
+
+
+      var selectInteraction = new ol.interaction.Select({
+        condition: ol.events.condition.singleClick,
+        toggleCondition: ol.events.condition.shiftKeyOnly,
+       // hitTolerance: 80,
+        layers: function (data_layer) {
+          console.log(data_layer.get('myid'));
+        // hier de layer aan de hand van de layer id
+          return data_layer.get('myid') == 'datalayer';
+        },
+      });
+
+      //var london = ol.proj.transform([-0.12755, 51.507222], 'EPSG:4326', 'EPSG:3857');
+      //var center = ol.proj.transform([4.402, 52.0825], 'EPSG:4326', 'EPSG:3857');
+      var center = ol.proj.transform([4.4019253, 52.0829630], 'EPSG:4326', 'EPSG:3857');
+      var rotation = 0;
+    //var extent = [4.399, 51.900, 4.800, 52.100];
+    //extent = ol.extent.applyTransform(extent, ol.proj.getTransform("EPSG:4326", "EPSG:3857"));
+
+      var view = new ol.View({
+        center: center,
+    //  extent: extent,
+        rotation: rotation,
+        zoom: 18,
+        animation: true
+      });
+
+      var dragAndDropInteraction = new ol.interaction.DragAndDrop({
+        formatConstructors: [
+          //GPX,
+          ol.format.GeoJSON,
+          //IGC,
+          //KML,
+          //TopoJSON
+        ]
+      });
+
+
+      var draw = new ol.interaction.Draw({
+        source: source,
+        minPoints: 2,  // 5 if you want to draw a square
+        maxPoints: 2,  // 5 if you want to draw a square
+        type: 'LineString'
+      });
+
+      var map = new ol.Map({
+        target: 'map',
+        interactions: ol.interaction.defaults({
+          keyboard: false,
+          altShiftDragRotate: false,
+          doubleClickZoom: false,
+          shiftDragZoom: false,
+        }),
+      });
+
+      // Popup showing the position the user clicked
+      var popup = new ol.Overlay({
+		    id: 'label-popup',  
+        element: document.getElementById('popup')
+      });
+
+      var modify = new ol.interaction.Modify({
+        features: selectInteraction.getFeatures(),
+        pixelTolerance: 10000,    // big number to cope with all pixelresolutions, so only start- and endPoints of a LineString are selected
+      //wrapX: false
+      });
+      /* end global variables */
+
+
+
+      /* start map setting */
+      map.addLayer(tile_layer);
+      map.addLayer(data_layer);
+      map.setView(view);
+
+      //map.getInteractions().extend([selectInteraction, modify, dragAndDropInteraction, draw]);
+      map.getInteractions().extend([dragAndDropInteraction]);
+      //map.getInteractions().extend([selectInteraction]);
+
+      /* end map setting */
+
+
+
+      /* start functions */
+      /**
+       * Creates a new help tooltip
+       */
+      function useHelpTooltip(empty=false) {
+        if (helpTooltipElement) {
+          if (helpTooltipElement.parentNode) {
+            helpTooltipElement.parentNode.removeChild(helpTooltipElement);
+          }
+        }
+        if (empty == false)
+        {
+          helpTooltipElement = document.createElement('div');
+          helpTooltipElement.className = 'tooltip hidden';
+          helpTooltip = new ol.Overlay({
+            element: helpTooltipElement,
+            offset: [15, 0],
+            positioning: 'center-left'
+          });
+          map.addOverlay(helpTooltip);
+        }
+      }
+
+
+      /**
+       * Creates a new measure tooltip
+       */
+      function createMeasureTooltip() {
+        if (measureTooltipElement) {
+          measureTooltipElement.parentNode.removeChild(measureTooltipElement);
+        }
+        measureTooltipElement = document.createElement('div');
+        measureTooltipElement.className = 'tooltip tooltip-measure';
+        measureTooltip = new ol.Overlay({
+          element: measureTooltipElement,
+          offset: [0, -15],
+          positioning: 'bottom-center'
+        });
+        map.addOverlay(measureTooltip);
+      }
+
+	 
+
+      /**
+       * Format length output.
+       * @param {module:ol/geom/LineString~LineString} line The line.
+       * @return {string} The formatted length.
+       */
+      var formatLength = function(line) {
+        var length = line.getLength();
+        var output;
+        if (length > 100) {
+          output = (Math.round(length / 1000 * 100) / 100) +
+              ' ' + 'km';
+        } else {
+          output = (Math.round(length * 100) / 100) +
+              ' ' + 'm';
+        }
+        return output;
+      };
+
+
+      function label(evt) {
+        data_layer.setStyle(styleFunction);
+        var coordinate = evt.coordinate;
+        var pixel = map.getPixelFromCoordinate(coordinate);
+
+        // remove current popup
+        var element = popup.getElement();
+        $(element).popover('dispose'); //hide(); //popover('hide'); //.html('------------');
+
+        // get current feature name or set to ''
+        map.forEachFeatureAtPixel(pixel, function(feature) {
+		    var feature_name = feature.getProperties()['name'] || '';
+
+	      //var coordinate = feature.coordinate;
+	      var hdms = ol.coordinate.toStringHDMS(ol.proj.toLonLat(coordinate));
+			  var content = '<p><input id="label-name" type="text" value="' + feature_name + '"></p><code>' + hdms + '</code>';
+	      popup.setPosition(coordinate);
+			  $(element).popover({
+	          placement: 'top',
+	          animation: false,
+	          html: true,
+	          content: content
+	      });
+
+	      $(element).popover('show');
+			$('#label-name').focus();
+			
+			
+	      //});
+
+			$('#label-name').off('keyup').on('keyup', function sav() {
+				//console.log($(this));
+				//$('#legenda-item').html($(this).val());
+			  feature.setProperties({'name': $(this).val()});
+			}); 
+
+
+
+          // hier name toevoegen aan de feature
+          //feature.setProperties({'name': $('#legenda-item').html()});
+          //el.innerHTML += feature.get('name') + '<br>';
+          //map.removeEventListener('click');
+        });
+      }
+
+      function styleFunction(feature, resolution) {
+        var redImage = new ol.style.Circle({
+          radius: 3,
+          fill: null,
+          stroke: new ol.style.Stroke({
+            color: '#e21a1a',
+            width: 6
+          })
+        });
+
+        var redStyle = new ol.style.Style({
+          stroke: new ol.style.Stroke({
+            color: '#ffcc33',
+            width: 8
+          }),
+          image: redImage,
+          text: new ol.style.Text({
+            font: '14px Calibri,sans-serif',
+            fill: new ol.style.Fill({
+              color: '#000'
+            }),
+            stroke: new ol.style.Stroke({
+              color: '#fff',
+              width: 3
+            }),
+            text: withLabel && feature.getProperties()["name"],  //'me',
+            rotation: rotation,
+            offsetX: 10,
+            offsetY: 20
+          })
+        });
+        return redStyle;
+      };
+
+      var displayFeatureInfo = function(pixel) {
+        var features = [];
+        map.forEachFeatureAtPixel(pixel, function(feature) {
+          features.push(feature);
+        });
+        if (features.length > 0) {
+			var infoContent = '<ul>';
+          var info = [];
+          var i, ii;
+          for (i = 0, ii = features.length; i < ii; ++i) {
+			  var featureName = features[i].get('name') || '';
+            infoContent += '<li>' + featureName;
+            //info.push(features[i].get('name'));
+  		    var geom = features[i].getGeometry();
+            var output;
+            if (geom instanceof ol.geom.LineString) {
+              output = '(' + formatLength(geom) + ')';
+			  //infoContent += output;
+              //info.push(output);
+		    }
+            infoContent += '</li>';
+			
+          }
+		  infoContent = infoContent.replace('<li></li>', '');  // remove unfinished feature (when drawing a new one)
+  		  infoContent += '</ul>';
+		  $('#info').html(infoContent);
+          //document.getElementById('info').innerHTML = info.join(', ') || '&nbsp';
+        }
+		else {
+  		  $('#info').html('');
+			
+          //document.getElementById('info').innerHTML = '&nbsp;';
+        }
+      };
+
+      // Start https://openlayersbook.github.io/ch09-taking-control-of-controls/example-06.html
+      function download(filename, text) {
+        var blob = new Blob(
+          [text],
+          {type: "application/json;charset=utf-8"}
+        );
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
+        //}
+        //  download(jsonData, 'json.txt', 'text/plain');
+        //saveAs(blob, filename);
+      }
+      function getData() {
+        // gather data for download purposes
+        var d_format = new ol.format.GeoJSON({
+          featureProjection:'EPSG:3857'
+        });
+        var d_features = source.getFeatures();
+        var d_featuresGeoJSON = d_format.writeFeatures(d_features);
+        //download('export.geojson', JSON.stringify(d_featuresGeoJSON));
+        var timestamp =  new Date()
+        var year = timestamp.getFullYear();
+        var month = timestamp.getMonth() + 1;  // starting with January = 0
+        if (month < 10) {
+          month = "0" + month;
+        }
+        var day = timestamp.getDate();   // and NOT getDay() because that is the day number of the week
+        if (day < 10) {
+          day = "0" + day;
+        }
+        var hours = timestamp.getHours();
+        if (hours < 10) {
+          hours = "0" + hours;
+        }
+        var minutes = timestamp.getMinutes();
+        if (minutes < 10) {
+          minutes = "0" + minutes;
+        }
+
+        var timestampName = "_" + year + "_" + month + "_" + day + "_" + hours + "_" + minutes;
+        download('export' + timestampName + '.geojson', d_featuresGeoJSON);
+      }
+      //End https://openlayersbook.github.io/ch09-taking-control-of-controls/example-06.html
+
+      /* end functions */
+
+      /* start events */
+	    var listener;
+      draw.on('drawstart',
+        function(evt) {
+          //console.log(evt);
+          // set sketch
+          sketch = evt.feature;
+
+          /** @type {module:ol/coordinate~Coordinate|undefined} */
+		  
+		      var tooltipCoord = evt.coordinate;
+
+          listener = sketch.getGeometry().on('change', function(evt) {
+            var geom = evt.target;
+            var output;
+
+            if (geom instanceof ol.geom.LineString) {
+              output = formatLength(geom);
+              tooltipCoord = geom.getLastCoordinate();
+            }
+            measureTooltipElement.innerHTML = output;
+            measureTooltip.setPosition(tooltipCoord);
+          });
+        }, this);
+        
+
+      draw.on('drawend',
+        function(evt) {
+          // unset sketch
+          sketch = null;
+          // unset tooltip so that a new one can be created
+		      map.removeOverlay(measureTooltip);
+          measureTooltipElement = null;
+          createMeasureTooltip();
+          ol.Observable.unByKey(listener);
+        }, this);
+ 
+
+      var selected_features = selectInteraction.getFeatures();
+
+      var dirty = {};
+
+      selected_features.on('add', function(evt) {
+        //console.log(selected_features);
+        var feature = evt.element;
+        var fid = feature.getId();
+        feature.on('change', function(evt) {
+          //console.log('being changed');
+          dirty[evt.target.getId()] = true;
+		  // for LineString
+		  var geom = feature.getGeometry();
+          var output;
+          if (geom instanceof ol.geom.LineString) {
+            output = formatLength(geom);
+            tooltipCoord = geom.getLastCoordinate();
+          }
+          console.log(output);
+          measureTooltipElement.innerHTML = output;
+          measureTooltip.setPosition(tooltipCoord);
+		  
+        });
+      });
+
+      selected_features.on('remove', function(evt) {
+        var feature = evt.element;
+        var fid = feature.getId();
+        if (dirty[fid]) {
+          //console.log('changed');
+		      map.removeOverlay(measureTooltip);
+          // unset tooltip so that a new one can be created
+          measureTooltipElement = null;
+          createMeasureTooltip();
+
+          console.log(ol.proj.transform(feature.getGeometry().getCoordinates()[0],'EPSG:3857', 'EPSG:4326'));
+          console.log(ol.proj.transform(feature.getGeometry().getCoordinates()[1],'EPSG:3857', 'EPSG:4326'));
+        }
+      });
+
+      dragAndDropInteraction.on('addfeatures', function(event) {
+        var features = event.features;
+        try {
+          //data_layer.getSource().clear();
+          data_layer.getSource().addFeatures(features);
+          //data_layer.setStyle(styleFunction);
+          //console.log(data_layer);
+        }
+        catch(err) {
+          console.log('The feature file is malformed ' + err);
+        }
+      });
+
+
+      map.on('pointermove', function(evt) {
+        //$("html").css("cursor", "default");
+        if (evt.dragging) {
+          return;
+        }
+		try {
+          var pixel = map.getEventPixel(evt.originalEvent);
+          displayFeatureInfo(pixel);
+          //helpTooltipElement.innerHTML = 'helpMsg';
+          helpTooltip.setPosition(evt.coordinate);
+          helpTooltipElement.classList.remove('hidden');
+        }
+		catch (err) {
+          // do nothing
+		}
+      });
+
+      $('.nav-link').on('click', function () {
+        $("html").css("cursor","default");
+        // cleanup
+        $(document).off('keydown');
+        useHelpTooltip(true);
+        $('.popover').hide();
+        map.removeOverlay(popup);
+        
+
+        var selected_nav_link = '';
+        map.removeInteraction(draw);
+        map.removeInteraction(selectInteraction);
+        map.removeInteraction(modify);
+        //map.removeEventListener('click');		
+      });
+
+
+      $('#id_1-1').on('mouseenter', function() {
+        $(this).css("cursor","help");
+        $(this).html('Drag and drop a JSON file on the map');
+      });
+      $('#id_1-1').on('mouseleave', function() {
+        $(this).css("cursor","default");
+		    $(this).html("Open");
+      });
+	  
+      $('.dropdown-item').on('click', function () {
+        //console.log($(this).attr('id'));
+        var selection = '';
+
+        switch($(this).attr('id')) {
+          case 'id_1-1':
+            // open
+            console.log('Works with drag and drop');
+            break;
+          case 'id_1-2':
+            // save
+            getData();
+            break;
+          case 'id_2-1':
+            // new
+            $("html").css("cursor","copy");
+	          createMeasureTooltip();
+	          useHelpTooltip();
+	          helpTooltipElement.innerHTML = 'Tekenen';
+            map.addInteraction(draw);
+            break;
+          case 'id_2-2':
+            // move
+            $("html").css("cursor","move");
+	          createMeasureTooltip();
+	          useHelpTooltip();
+	          helpTooltipElement.innerHTML = 'Verplaatsen';
+            map.addInteraction(selectInteraction);
+            map.addInteraction(modify);
+            break;
+          case 'id_2-3':
+            // remove
+            $("html").css("cursor","alias");
+	          useHelpTooltip();
+	          helpTooltipElement.innerHTML = 'Verwijderen';
+            // when the user moves the mouse, get the name property
+            // from each feature under the mouse and display it
+            function remove(evt) {
+              var coordinate = evt.coordinate;
+              var pixel = map.getPixelFromCoordinate(coordinate);
+              //var el = document.getElementById('info');
+              //el.innerHTML = '';
+              map.forEachFeatureAtPixel(pixel, function(feature) {
+                data_layer.getSource().removeFeature(feature);
+                //el.innerHTML += feature.get('name') + '<br>';
+                //map.removeEventListener('click');
+              });
+            };
+            map.on('click', remove);
+            break;
+          case 'id_2-4':
+            // label
+            $("html").css("cursor","text");
+	          useHelpTooltip();
+	          helpTooltipElement.innerHTML = 'Label invoeren';
+	          map.addOverlay(popup);
+
+            map.on('click', label);
+            break;
+            
+          case 'id_2-5':
+            // no action
+            useHelpTooltip(true);
+            break;
+          case 'id_2-6':
+            // clear all
+            useHelpTooltip(true);
+            data_layer.getSource().clear();
+            break;
+          case 'id_3-1':
+            // rotate clockwise
+	          useHelpTooltip();
+	          helpTooltipElement.innerHTML = 'Use arrow keys to rotate';
+            $(document).on('keydown', function(e) {
+              if (e.keyCode == 37) {
+                rotation = rotation - 1 * Math.PI/180;    
+              }
+              if (e.keyCode == 39) {
+                rotation = rotation + 1 * Math.PI/180;    
+              }
+              view.animate({rotation: rotation,duration:250});
+            });
+            //rotation = 95 * Math.PI/180;
+            //data_layer.setStyle(styleFunction);
+            break;
+          case 'id_3-2':
+            // without labels
+            withLabel = !withLabel;
+            data_layer.setStyle(styleFunction);
+            break;
+        }
+      });
+
+      /* end events */
+	  
+    </script>
+  </body>
+</html>
